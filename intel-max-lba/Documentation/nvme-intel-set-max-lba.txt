@@ -1,0 +1,33 @@
+NVME-INTEL-SET-MAX-LBA()                                                                                 NVME-INTEL-SET-MAX-LBA()
+
+NAME
+       nvme-intel-set-max-lba - Sends NVMe Set-Feature Command
+
+SYNOPSIS
+       nvme intel set-max-lba <device> [-l | --lba] [-n | --namespace-id]
+
+DESCRIPTION
+       Sends the NVMe set-feature (0xC1).
+
+       The <device> parameter is mandatory and may be either the NVMe character device (ex: /dev/nvme0), or a namespace block
+       device (ex: /dev/nvme0n1).
+
+       On success, the feature log for maximum LBA (0xC1) may be changed depending on the specified namespace and the lba setting
+       given. The namespace identifier, by default, will be set to 0.
+
+OPTIONS
+       -l, --lba
+           New LBA setting (required)
+
+       -n, --namespace-id
+           Namespace identifier (optional)
+
+EXAMPLES
+       •   Set the maximum LBA:
+
+               # nvme intel set-max-lba /dev/nvme0 --namespace-id=<NUM> --lba=<NUM>
+
+NVME
+       Part of the nvme-user suite
+
+                                                                                                         NVME-INTEL-SET-MAX-LBA()
