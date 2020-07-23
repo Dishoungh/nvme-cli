@@ -322,6 +322,150 @@ static int get_additional_smart_log(int argc, char **argv, struct command *cmd, 
 	return err;
 }
 
+static void get_maximum_lba_jsn(unsigned int nsid, unsigned fid, const unsigned int dlen,
+		unsigned long int val, int native)
+{
+	struct json_object *root = json_create_object();
+
+	json_object_add_value_int(root, "Namespace ID", nsid);
+	json_object_add_value_int(root, "Feature ID", fid);
+	json_object_add_value_int(root, "Data Length", dlen);
+	json_object_add_value_int(root, (!native ? "Current Maximum LBA" : "Native Maximum LBA"), val);
+	json_print_object(root, NULL);
+	json_free_object(root);
+	printf("\n");
+}
+
+static int get_maximum_lba(int argc, char **argv, struct command *cmd, struct plugin *plugin)
+{
+	const char *desc   = "Retrieve the device's current maximum LBA, and show it";
+	const char *native = "Retrieve the device's native maximum LBA, and show it";
+	const char *json   = "Dump output in json format";
+	const char *raw    = "Dump output in raw format";
+	int        err, fd;
+	__u32      namespace_id = 1;
+	__u32      result;
+	void       *buf = NULL;
+	unsigned   feature_id;
+	unsigned long int lba = 0;
+	const unsigned int data_len = 6;
+            
+	struct config {
+		int   native_lba;
+		int   json;
+		int   raw;
+	};
+
+	struct config cfg = {
+	};
+
+	OPT_ARGS(opts) = {
+		OPT_FLAG("native-lba", 'n', &cfg.native_lba, native),
+		OPT_FLAG("json", 'j', &cfg.json, json),
+		OPT_FLAG("raw", 'r', &cfg.raw, raw),
+		OPT_END()
+	};
+
+	fd = parse_and_open(argc, argv, desc, opts);
+	if (fd < 0)
+		return fd;
+
+	feature_id = (!cfg.native_lba ? 0xC1 : 0xC2);
+
+	if (posix_memalign(&buf, getpagesize(), data_len)) {
+		fprintf(stderr, "can not allocate feature payload\n");
+		err = -ENOMEM;
+		return fd;
+	}
+    
+	memset(buf, 0, data_len);
+	err = nvme_get_feature(fd, namespace_id, feature_id, 0, 0, data_len, buf, &result);
+
+	if (cfg.json && cfg.raw) {
+		printf("Can't print raw format in json\n");
+		
+		if (buf)
+			free(buf);
+
+		return err;
+	}
+
+	if (!err && buf) {
+		for (int i = data_len - 1; i >= 0; i--)
+			lba += (!i ? ((unsigned char *)buf)[i] : ((unsigned char *)buf)[i] * ((long)((long)0x100 << (8 * (i-1)))));
+
+		if (cfg.json)
+			get_maximum_lba_jsn(namespace_id, feature_id, data_len, lba, cfg.native_lba);
+		else if (cfg.raw) 
+			d(buf, 16, 32, 1);
+		else
+			printf("\n%s Maximum LBA Value: %lu\n", (!cfg.native_lba ? "Current" : "Native"), lba);
+	}
+	else if (err > 0)
+		nvme_show_status(err);
+	else
+		perror("This subset of the get-feature command is not supported by this drive");
+
+	if (buf)
+		free(buf);
+
+	return err;
+}
+
+static int set_maximum_lba(int argc, char **argv, struct command *cmd, struct plugin *plugin)
+{
+	const char     *desc = "Set the device's current maximum LBA";
+	const char     *lba  = "New maximum lba setting (required) ";
+	const char     *namespace_id = "identifier of desired namespace (defaults to 1)";
+	int            err, fd;
+	const unsigned data_len = 6;
+	const unsigned feature_id = 0xC1;
+	__u32          result;
+	void           *buf = NULL;
+
+	struct config {
+		unsigned long int lba;
+		__u32 namespace_id;
+	};
+
+	struct config cfg = {
+	};
+
+	OPT_ARGS(opts) = {
+		OPT_UINT("lba", 'l', &cfg.lba, lba),
+		OPT_UINT("namespace-id", 'n', &cfg.namespace_id, namespace_id),
+		OPT_END()
+	};
+
+	fd = parse_and_open(argc, argv, desc, opts);
+
+	if (fd < 0)
+		return fd;
+
+
+	if (!cfg.lba) {
+		fprintf(stderr, "lba setting required param [--lba=<NUM>, -n <NUM>]\n");
+		err = -EINVAL;
+		close(fd);
+		return err;
+	}
+	else {
+		err = nvme_set_feature(fd, cfg.namespace_id, feature_id, cfg.lba, 0, 0, data_len, buf, &result);
+
+		if (err < 0)
+			perror("This subset of the set-feature command is not supported by this drive");
+		else if (!err)
+			printf("\nLBA setting changed: max_lba=%ld\n", cfg.lba);
+		else
+			nvme_show_status(err);
+	}
+
+	if(buf)
+		free(buf);
+
+	return err;
+}
+
 static int get_market_log(int argc, char **argv, struct command *cmd, struct plugin *plugin)
 {
 	const char *desc = "Get Intel Marketing Name log and show it.";
@@ -1289,7 +1433,7 @@ static int enable_lat_stats_tracking(int argc, char **argv,
 				"Latency Statistics Tracking (FID 0x%X) is currently (%i).\n",
 				fid, result);
 		} else {
-			printf("Could not read feature id 0xE2.\n");
+			printf("Could not read feature id 0xE2.");
 			return err;
 		}
 		break;
@@ -1302,14 +1446,14 @@ static int enable_lat_stats_tracking(int argc, char **argv,
 					nvme_status_to_string(err), err);
 		} else if (err < 0) {
 			perror("Enable latency tracking");
-			fprintf(stderr, "Command failed while parsing.\n");
+			fprintf(stderr, "Command failed while parsing.");
 		} else {
 			printf("Successfully set enable bit for FID (0x%X) to %i.\n",
 				fid, option);
 		}
 		break;
 	default:
-		printf("%d not supported.\n", option);
+		printf("%d not supported.", option);
 		return EINVAL;
 	}
 	return fd;

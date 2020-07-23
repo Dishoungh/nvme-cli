@@ -15,6 +15,8 @@ PLUGIN(NAME("intel", "Intel vendor specific extensions"),
 		ENTRY("market-name", "Retrieve Intel Marketing Name log, show it", get_market_log)
 		ENTRY("smart-log-add", "Retrieve Intel SMART Log, show it", get_additional_smart_log)
 		ENTRY("temp-stats", "Retrieve Intel Temperature Statistics log, show it", get_temp_stats_log)
+		ENTRY("get-max-lba", "Retrieve NVMe get-feature log (0xC1/0xC2), show it", get_maximum_lba)
+		ENTRY("set-max-lba", "Set the Maximum LBA feature (0xC1)", set_maximum_lba)
 	)
 );
 
